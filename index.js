@@ -8,8 +8,18 @@ import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+const isInteractive = process.stdin.isTTY;
+
+async function askQuestion(text) {
+    if (!isInteractive) return null;
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise((resolve) => {
+        rl.question(text, (answer) => {
+            rl.close();
+            resolve(answer);
+        });
+    });
+}
 
 const plugins = new Map();
 const prefix = '.'; 
@@ -50,7 +60,17 @@ async function startBot() {
     sockGlobal = sock;
 
     if (!sock.authState.creds.registered) {
-        const phoneNumber = await question('Enter your WhatsApp phone number with country code: ');
+        let phoneNumber = process.env.PHONE_NUMBER;
+
+        if (!phoneNumber && isInteractive) {
+            phoneNumber = await askQuestion('Enter your WhatsApp phone number with country code: ');
+        }
+
+        if (!phoneNumber) {
+            console.error('❌ No phone number provided. Set the PHONE_NUMBER environment variable (e.g. 1234567890) and restart.');
+            process.exit(1);
+        }
+
         const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
         setTimeout(async () => {
             try {

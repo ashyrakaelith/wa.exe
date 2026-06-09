@@ -1,0 +1,15 @@
+{"message":"node:internal/readline/interface:400","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082643076Z"}
+{"message":"      throw new ERR_USE_AFTER_CLOSE('readline');","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082649016Z"}
+{"message":"            ^","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082653621Z"}
+{"message":"","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082657499Z"}
+{"message":"Error [ERR_USE_AFTER_CLOSE]: readline was closed","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082661401Z"}
+{"message":"    at [kQuestion] (node:internal/readline/interface:400:13)","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082665593Z"}
+{"message":"    at Interface.question (node:readline:158:20)","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082669828Z"}
+{"message":"    at file:///app/index.js:12:56","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082673700Z"}
+{"message":"    at new Promise (<anonymous>)","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082676979Z"}
+{"message":"    at question (file:///app/index.js:12:28)","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082680272Z"}
+{"message":"    at startBot (file:///app/index.js:53:35) {","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082684023Z"}
+{"message":"  code: 'ERR_USE_AFTER_CLOSE'","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082687354Z"}
+{"message":"}","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082693000Z"}
+{"message":"","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082696099Z"}
+{"message":"Node.js v22.22.3","severity":"error","attributes":{"level":"error"},"timestamp":"2026-06-09T10:05:06.082700063Z"}
