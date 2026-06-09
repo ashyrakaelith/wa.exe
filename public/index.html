@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WA Bot Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #21262d;
+    --green: #25d366;
+    --green-dim: #1a9b4b;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --yellow: #e3b341;
+    --text: #c9d1d9;
+    --muted: #6e7681;
+    --incoming: #1c2d1e;
+    --outgoing: #162032;
+    --bubble-in: #1f3a22;
+    --bubble-out: #172035;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Header ── */
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .logo { font-size: 22px; }
+  header h1 { font-size: 16px; font-weight: 700; letter-spacing: .5px; color: var(--green); }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-left: auto; transition: background .3s; }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.error { background: var(--red); }
+  #status-label { font-size: 12px; color: var(--muted); }
+
+  /* ── Main layout ── */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Columns ── */
+  .col { display: flex; flex-direction: column; flex: 1; border-right: 1px solid var(--border); overflow: hidden; }
+  .col:last-child { border-right: none; }
+  .col-header { padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .col-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; }
+  .col-count { margin-left: auto; font-size: 11px; background: var(--border); border-radius: 20px; padding: 2px 8px; color: var(--muted); }
+  .col-in .col-title  { color: var(--green); }
+  .col-out .col-title { color: var(--blue); }
+  .col-err .col-title { color: var(--red); }
+  .col-in  { background: var(--incoming); }
+  .col-out { background: var(--outgoing); }
+  .col-err { max-width: 360px; background: #130d0d; }
+
+  .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Bubbles ── */
+  .bubble { padding: 10px 12px; border-radius: var(--radius); font-size: 13px; line-height: 1.5; word-break: break-word; position: relative; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .bubble-in  { background: var(--bubble-in);  border-left: 3px solid var(--green); }
+  .bubble-out { background: var(--bubble-out); border-left: 3px solid var(--blue); }
+  .bubble-err { background: #1f0d0d; border-left: 3px solid var(--red); font-size: 12px; }
+  .bubble-info { background: var(--surface); border-left: 3px solid var(--yellow); font-size: 12px; color: var(--yellow); }
+
+  .bubble .meta { font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .bubble .meta .jid { color: var(--green); font-weight: 600; }
+  .bubble .meta .jid-out { color: var(--blue); }
+  .bubble .body { color: var(--text); }
+  .bubble .body.muted { color: var(--muted); font-style: italic; }
+  .bubble .err-label { color: var(--red); font-weight: 700; margin-bottom: 2px; }
+  .bubble .err-msg { color: #ffa0a0; }
+  .bubble .err-stack { color: var(--muted); font-size: 10px; margin-top: 4px; white-space: pre-wrap; display: none; }
+  .bubble .toggle-stack { font-size: 10px; color: var(--muted); cursor: pointer; text-decoration: underline; margin-top: 4px; display: inline-block; }
+  .bubble .ts { position: absolute; bottom: 6px; right: 10px; font-size: 10px; color: var(--muted); }
+
+  /* ── Clear btn ── */
+  .clear-btn { font-size: 11px; color: var(--muted); cursor: pointer; background: none; border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; margin-left: 4px; }
+  .clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* ── Empty state ── */
+  .empty { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--muted); font-size: 13px; flex-direction: column; gap: 6px; }
+  .empty span { font-size: 28px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">💬</div>
+  <h1>WA Bot Dashboard</h1>
+  <div id="status-label">Connecting…</div>
+  <div class="status-dot" id="dot"></div>
+</header>
+
+<div class="main">
+  <!-- Incoming -->
+  <div class="col col-in">
+    <div class="col-header">
+      <span>📥</span>
+      <span class="col-title">Incoming</span>
+      <span class="col-count" id="cnt-in">0</span>
+      <button class="clear-btn" onclick="clearCol('in')">Clear</button>
+    </div>
+    <div class="messages" id="feed-in">
+      <div class="empty"><span>📭</span>No incoming messages yet</div>
+    </div>
+  </div>
+
+  <!-- Outgoing -->
+  <div class="col col-out">
+    <div class="col-header">
+      <span>📤</span>
+      <span class="col-title">Outgoing</span>
+      <span class="col-count" id="cnt-out">0</span>
+      <button class="clear-btn" onclick="clearCol('out')">Clear</button>
+    </div>
+    <div class="messages" id="feed-out">
+      <div class="empty"><span>📭</span>No outgoing messages yet</div>
+    </div>
+  </div>
+
+  <!-- Errors -->
+  <div class="col col-err">
+    <div class="col-header">
+      <span>🔴</span>
+      <span class="col-title">Error Log</span>
+      <span class="col-count" id="cnt-err">0</span>
+      <button class="clear-btn" onclick="clearCol('err')">Clear</button>
+    </div>
+    <div class="messages" id="feed-err">
+      <div class="empty"><span>✅</span>No errors</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const counts = { in: 0, out: 0, err: 0 };
+
+function fmt(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function short(jid) {
+  return jid ? jid.replace('@s.whatsapp.net','').replace('@g.us',' (group)') : '?';
+}
+
+function scrollBottom(id) {
+  const el = document.getElementById(id);
+  el.scrollTop = el.scrollHeight;
+}
+
+function removeEmpty(feedId) {
+  const feed = document.getElementById(feedId);
+  const empty = feed.querySelector('.empty');
+  if (empty) empty.remove();
+}
+
+function bumpCount(key) {
+  counts[key]++;
+  document.getElementById('cnt-' + key).textContent = counts[key];
+}
+
+function clearCol(key) {
+  const feed = document.getElementById('feed-' + key);
+  feed.innerHTML = '';
+  counts[key] = 0;
+  document.getElementById('cnt-' + key).textContent = '0';
+  const emptyTexts = { in: ['📭','No incoming messages yet'], out: ['📭','No outgoing messages yet'], err: ['✅','No errors'] };
+  const [icon, label] = emptyTexts[key];
+  feed.innerHTML = `<div class="empty"><span>${icon}</span>${label}</div>`;
+}
+
+function addMessage(ev) {
+  const dir = ev.direction === 'in' ? 'in' : 'out';
+  const feedId = 'feed-' + dir;
+  removeEmpty(feedId);
+  const div = document.createElement('div');
+  div.className = `bubble bubble-${dir}`;
+  const jidClass = dir === 'in' ? 'jid' : 'jid-out';
+  const bodyText = ev.text || `[${ev.messageType || 'media'}]`;
+  const isEmpty = !ev.text;
+  div.innerHTML = `
+    <div class="meta">
+      <span class="${jidClass}">${short(dir === 'in' ? ev.from : ev.to)}</span>
+      <span>${fmt(ev.timestamp)}</span>
+      ${dir === 'in' && ev.to ? `<span>→ ${short(ev.to)}</span>` : ''}
+    </div>
+    <div class="body ${isEmpty ? 'muted' : ''}">${escHtml(bodyText)}</div>
+    <span class="ts">${fmt(ev.timestamp)}</span>
+  `;
+  document.getElementById(feedId).appendChild(div);
+  bumpCount(dir);
+  scrollBottom(feedId);
+}
+
+function addError(ev) {
+  removeEmpty('feed-err');
+  const div = document.createElement('div');
+  div.className = 'bubble bubble-err';
+  const hasStack = !!ev.stack;
+  const stackId = 'stk-' + Date.now();
+  div.innerHTML = `
+    <div class="err-label">⚠ ${escHtml(ev.label || 'Error')}</div>
+    <div class="err-msg">${escHtml(ev.message)}</div>
+    ${hasStack ? `<span class="toggle-stack" onclick="toggleStack('${stackId}')">show stack trace</span><pre class="err-stack" id="${stackId}">${escHtml(ev.stack)}</pre>` : ''}
+    <span class="ts">${fmt(ev.timestamp)}</span>
+  `;
+  document.getElementById('feed-err').appendChild(div);
+  bumpCount('err');
+  scrollBottom('feed-err');
+}
+
+function addInfo(ev) {
+  ['feed-in','feed-out'].forEach(feedId => {
+    const div = document.createElement('div');
+    div.className = 'bubble bubble-info';
+    div.innerHTML = `<div class="body">${escHtml(ev.text)}</div><span class="ts">${fmt(ev.timestamp)}</span>`;
+    document.getElementById(feedId).appendChild(div);
+    scrollBottom(feedId);
+  });
+}
+
+function toggleStack(id) {
+  const el = document.getElementById(id);
+  const shown = el.style.display === 'block';
+  el.style.display = shown ? 'none' : 'block';
+  el.previousElementSibling.textContent = shown ? 'show stack trace' : 'hide stack trace';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function handleEvent(ev) {
+  if (ev.type === 'history') { ev.items.forEach(dispatch); return; }
+  dispatch(ev);
+}
+
+function dispatch(ev) {
+  if (ev.type === 'message') addMessage(ev);
+  else if (ev.type === 'error') addError(ev);
+  else if (ev.type === 'info') addInfo(ev);
+}
+
+// ── WebSocket ──
+const dot = document.getElementById('dot');
+const statusLabel = document.getElementById('status-label');
+let ws, retryDelay = 1000;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+
+  ws.onopen = () => {
+    dot.className = 'status-dot connected';
+    statusLabel.textContent = 'Live';
+    retryDelay = 1000;
+  };
+  ws.onmessage = e => { try { handleEvent(JSON.parse(e.data)); } catch(_) {} };
+  ws.onclose = () => {
+    dot.className = 'status-dot error';
+    statusLabel.textContent = 'Reconnecting…';
+    setTimeout(connect, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 10000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+connect();
+</script>
+</body>
+</html>

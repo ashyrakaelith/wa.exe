@@ -7,6 +7,7 @@ import pino from 'pino';
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
+import { startWebServer, logMessage, logError, logInfo } from './web.js';
 
 const isInteractive = process.stdin.isTTY;
 
@@ -22,33 +23,31 @@ async function askQuestion(text) {
 }
 
 const plugins = new Map();
-const prefix = '.'; 
-let sockGlobal = null;
+const prefix = '.';
 
 async function loadPlugins() {
     const pluginsDir = path.join(process.cwd(), 'plugins');
     if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir);
 
-    const files = fs.readdirSync(pluginsDir).filter(file => file.endsWith('.js'));
-    
+    const files = fs.readdirSync(pluginsDir).filter(f => f.endsWith('.js'));
     for (const file of files) {
         try {
-            const pluginModule = await import(`./plugins/${file}?t=${Date.now()}`);
-            const plugin = pluginModule.default;
+            const mod = await import(`./plugins/${file}?t=${Date.now()}`);
+            const plugin = mod.default;
             if (plugin && plugin.name && typeof plugin.execute === 'function') {
                 plugins.set(plugin.name.toLowerCase(), plugin);
                 console.log(`📡 Loaded plugin: [${plugin.name}]`);
             }
-        } catch (error) {
-            console.error(`❌ Error loading plugin ${file}:`, error);
+        } catch (err) {
+            console.error(`❌ Error loading plugin ${file}:`, err);
+            logError(`Plugin load: ${file}`, err);
         }
     }
     console.log(`✅ Total plugins: ${plugins.size}\n`);
+    logInfo(`✅ Loaded ${plugins.size} plugin(s): ${[...plugins.keys()].join(', ') || 'none'}`);
 }
 
-async function startBot() {
-    await loadPlugins();
-
+async function connectBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({
         auth: state,
@@ -57,29 +56,28 @@ async function startBot() {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
-    sockGlobal = sock;
-
     if (!sock.authState.creds.registered) {
         let phoneNumber = process.env.PHONE_NUMBER;
-
         if (!phoneNumber && isInteractive) {
             phoneNumber = await askQuestion('Enter your WhatsApp phone number with country code: ');
         }
-
         if (!phoneNumber) {
-            console.error('❌ No phone number provided. Set the PHONE_NUMBER environment variable (e.g. 1234567890) and restart.');
+            const msg = 'No phone number provided. Set the PHONE_NUMBER environment variable and restart.';
+            console.error('❌ ' + msg);
+            logError('Auth', new Error(msg));
             process.exit(1);
         }
-
         const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
         setTimeout(async () => {
             try {
-                let code = await sock.requestPairingCode(cleanNumber);
+                const code = await sock.requestPairingCode(cleanNumber);
                 console.log(`\n====================================`);
                 console.log(`Pairing Code: \x1b[32m${code}\x1b[0m`);
                 console.log(`====================================\n`);
-            } catch (error) {
-                console.error('Pairing code error:', error);
+                logInfo(`🔑 Pairing code for ${cleanNumber}: ${code}`);
+            } catch (err) {
+                console.error('Pairing code error:', err);
+                logError('Pairing code', err);
             }
         }, 3000);
     }
@@ -89,12 +87,20 @@ async function startBot() {
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error instanceof Boom) 
-                ? lastDisconnect.error.output?.statusCode !== DisconnectReason.loggedOut 
+            const shouldReconnect = (lastDisconnect?.error instanceof Boom)
+                ? lastDisconnect.error.output?.statusCode !== DisconnectReason.loggedOut
                 : true;
-            if (shouldReconnect) startBot();
+            if (shouldReconnect) {
+                logInfo('🔄 Reconnecting…');
+                connectBot();
+            } else {
+                logInfo('🚫 Logged out. Restart the bot to re-authenticate.');
+            }
         } else if (connection === 'open') {
             console.log('🚀 Bot Connected!');
+            logInfo('🚀 Bot Connected!');
+        } else if (connection === 'connecting') {
+            logInfo('⏳ Connecting to WhatsApp…');
         }
     });
 
@@ -107,30 +113,49 @@ async function startBot() {
             const isFromMe = msg.key.fromMe;
             const messageType = Object.keys(msg.message)[0];
 
-            const body = messageType === 'conversation' ? msg.message.conversation :
-                        messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : '';
+            const body = messageType === 'conversation'
+                ? msg.message.conversation
+                : messageType === 'extendedTextMessage'
+                    ? msg.message.extendedTextMessage.text
+                    : '';
 
             const text = body.trim();
+            const sender = isFromMe
+                ? (sock.user?.id?.split(':')[0] + '@s.whatsapp.net')
+                : (msg.key.participant || remoteJid);
 
-            console.log(`📥 [IN] ${isFromMe ? 'SELF' : 'OTHER'} | ${remoteJid} | ${text ? text.substring(0,60) : messageType}`);
+            console.log(`📥 [${isFromMe ? 'OUT' : 'IN'}] ${remoteJid} | ${text ? text.substring(0, 60) : messageType}`);
+
+            logMessage({
+                direction: isFromMe ? 'out' : 'in',
+                from: sender,
+                to: remoteJid,
+                text: text || null,
+                messageType,
+                timestamp: new Date().toISOString()
+            });
 
             if (!text.startsWith(prefix)) return;
 
             const args = text.slice(prefix.length).trim().split(/ +/);
             const commandName = args.shift().toLowerCase();
-
             const plugin = plugins.get(commandName);
             if (!plugin) return;
-
-            const sender = isFromMe ? sock.user.id.split(':')[0] + '@s.whatsapp.net' : msg.key.participant || remoteJid;
 
             console.log(`🔧 Executing command: .${commandName}`);
             await plugin.execute(sock, msg, { args, remoteJid, sender });
 
         } catch (err) {
             console.error('❌ Core Error:', err);
+            logError('Core message handler', err);
         }
     });
 }
 
-startBot();
+async function main() {
+    startWebServer(5000);
+    await loadPlugins();
+    await connectBot();
+}
+
+main();
